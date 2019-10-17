@@ -1,0 +1,17 @@
+[
+  {
+    "column_name": "category",
+    "data_type": "text",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "max_budget",
+    "data_type": "real",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "max_tx_amount",
+    "data_type": "real",
+    "character_maximum_length": null
+  }
+]

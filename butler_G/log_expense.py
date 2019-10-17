@@ -25,16 +25,29 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def get_category(update, context):
+def get_category(update, context, mode="log"):
     """Handler that asks for Expense Category"""
     logger.info("Expense Category")
+    if mode == "log":
+        cats = const.EXPENSE_CATEGORIES
+        question = "What did you spend on now?"
+        ret_val = const.EXPENSE_AMOUNT
+
+    elif mode == "show_tx":
+        cats = ["ALL"] + list(const.EXPENSE_CATEGORIES)
+        question = "May I ask for which category?"
+        ret_val = const.GET_TXNS
+
+    else:
+        raise ValueError("Invalid `mode` provided.")
+
     reply_markup = ReplyKeyboardMarkup(
-        utils.gen_keyboard(const.EXPENSE_CATEGORIES, columns=2),
+        utils.gen_keyboard(cats, columns=2),
         one_time_keyboard=True,
         resize_keyboard=True,
     )
-    update.message.reply_text("What did you spend on now?", reply_markup=reply_markup)
-    return const.EXPENSE_AMOUNT
+    update.message.reply_text(question, reply_markup=reply_markup)
+    return ret_val
 
 
 def get_amount(update, context):
@@ -48,17 +61,30 @@ def get_amount(update, context):
             _CONN,
             "SELECT SUM(amount) FROM spend_log "
             "WHERE category=%(category)s "
-            "AND EXTRACT(DAY FROM localtimestamp - tx_timestamp) <= %(n_days)s",
-            query_data={"category": cat, "n_days": const.N_DAYS},
+            "AND tx_timestamp >= date_trunc('month', localtimestamp);",
+            query_data={"category": cat},
             fetch=True,
         ).result()[0][0]
         or 0
     )
-    cat_budget = const.EXPENSE_BUDGETS.get(cat, {}).get("max_budget", 1e9)
+    cat_budget, cat_tx = (
+        utils.execute_query(
+            _CONN,
+            "SELECT max_budget, max_tx_amount FROM monthly_budgets WHERE category=%(category)s;",
+            query_data={"category": cat},
+            fetch=True,
+        ).result()
+        or [[1e9, 1e9]]
+    )[0]
+    cat_budget = cat_budget or 1e9
+    cat_tx = cat_tx or 1e9
 
     context.user_data["category"] = cat
     context.user_data["_category_spend"] = cat_spd
     context.user_data["_category_budget"] = cat_budget
+    context.user_data["_category_tx"] = cat_tx
+
+    logger.debug(context.user_data)
 
     if const.WARN_THRESH <= cat_spd / cat_budget <= 1:
         update.message.reply_text(
@@ -79,9 +105,7 @@ def get_notes(update, context):
 
     amt = float(context.user_data["amount"])
 
-    if amt > const.EXPENSE_BUDGETS.get(context.user_data["category"], {}).get(
-        "tx_amount", 1e9
-    ):
+    if amt > context.user_data["_category_tx"]:
         update.message.reply_text(random.choice(const.LINES_SHAME))
 
     if (amt + context.user_data["_category_spend"]) / context.user_data[
@@ -161,42 +185,75 @@ def upload_expense(update, context):
         return get_category(update, context)
 
 
-def reply_30d_spend(update, context):
-    """Reply with spend for the past 30 days"""
+def reply_month_spend(update, context):
+    """Reply with spend for the past month"""
     utils.send_typing(update, context).result()
-    data = fetch_spend_data(const.N_DAYS)
+    data = fetch_spend_data()
     spend_str = "\n".join(
         [
-            "    - {}{} : {:,.2f}".format(
-                cat,
-                "*"
-                if amt > const.EXPENSE_BUDGETS.get(cat, {}).get("max_budget", 1e9)
-                else " ",
-                amt,
-            )
-            for cat, amt in data
+            "    - {}{} : {:,.2f}".format(cat, "*" if amt > budget else " ", amt)
+            for cat, amt, budget in data
         ]
     )
-    total_spend = sum(amt for _, amt in data)
+    total_spend = sum(row[1] for row in data)
     update.message.reply_text(
         (
-            "Here is the running 30 day spend summary for both the sir and the madam\n\n"
+            "Here is the running spend summary this month for both the sir and the madam\n\n"
             "Total: {:,.2f}\n{}"
         ).format(total_spend, spend_str)
     )
     return ConversationHandler.END
 
 
-def fetch_spend_data(n_days: int):
-    """Fetch Spend data for past `n_days` days"""
+def reply_txns(update, context):
+    """Reply last few transactions"""
+    if update.message.text.upper() == "ALL":
+        cat = None
+        row_base_str = "[{:%b-%d %H:%M}] SGD {:.1f}; {} - {}"
+    else:
+        cat = update.message.text
+        row_base_str = "[{:%b-%d %H:%M}] SGD {:.1f}; {}"
+
+    data = fetch_txns(cat)
+    txn_str = "\n".join([row_base_str.format(*row) for row in data])
+    update.message.reply_text(
+        ("Recent transactions for {}\n\n{}").format(
+            update.message.text, txn_str
+        )
+    )
+    return ConversationHandler.END
+
+
+def fetch_spend_data():
+    """Fetch Spend data for the current month"""
     query = """
+    SELECT month_spd.category, month_spd.TotalSpend, COALESCE(monthly_budgets.max_budget, 1e9)
+    FROM (
         SELECT category, SUM(amount) as TotalSpend
         FROM spend_log
-        WHERE EXTRACT(DAY FROM localtimestamp - tx_timestamp) <= {n_days}
+        WHERE tx_timestamp >= date_trunc('month', localtimestamp)
         GROUP BY category
-        ORDER BY SUM(amount) DESC;
+        ORDER BY SUM(amount) DESC
+    ) as month_spd
+    LEFT JOIN monthly_budgets ON month_spd.category = monthly_budgets.category;
+    """
+
+    return utils.execute_query(_CONN, query, fetch=True).result()
+
+
+def fetch_txns(cat=None, n_txn=8):
+    """Fetch transactions data"""
+    # TODO (lance.chua): refactor to accommodate sorting by amount, in addition to recency?
+    query = """
+    SELECT tx_timestamp, amount, {cat}notes
+    FROM spend_log
+    {where}
+    ORDER BY tx_timestamp DESC
+    LIMIT {n_txn};
     """.format(
-        n_days=n_days
+        cat=("" if cat else "category, "),
+        where=("WHERE category LIKE '{}'".format(cat) if cat else ""),
+        n_txn=n_txn,
     )
 
     return utils.execute_query(_CONN, query, fetch=True).result()

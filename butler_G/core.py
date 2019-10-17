@@ -90,21 +90,21 @@ def error(update, context):
             '[%s] Update "%s" caused error "%s"', user.first_name, update, context.error
         )
 
-        if hasattr(const, "DEV_CHATID"):
+        if hasattr(creds, "DEV_CHATID"):
             context.bot.send_message(
-                const.DEV_CHATID,
+                creds.DEV_CHATID,
                 "Error caught from update:\n{}\n\n{}".format(update, context.error),
             )
 
         update.message.reply_text(
             "Terribly sorry... I seem to be having problems...\n\nBlame {}...".format(
-                getattr(const, "DEV_NAME", "the developer")
+                getattr(creds, "DEV_NAME", "the developer")
             ),
             reply_markup=ReplyKeyboardRemove(),
         )
 
-        if hasattr(const, "ERROR_WEBP"):
-            update.message.reply_sticker(const.ERROR_WEBP)
+        if hasattr(creds, "ERROR_WEBP"):
+            update.message.reply_sticker(creds.ERROR_WEBP)
 
         update.message.reply_text(
             "Anything else I can do you for?", reply_markup=ReplyKeyboardRemove()
@@ -134,10 +134,13 @@ def land_to_task_menu(func):
     return wrapper
 
 
-def main():
+def start_bot():
+    """Main Routine"""
+    logger.info("Initializing updater and dispatcher")
     updater = Updater(token=creds.TELEGRAM_API_TOKEN, use_context=True)
     dispatcher = updater.dispatcher
 
+    logger.info("Initializing conversation handler")
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -152,8 +155,14 @@ def main():
                     log_expense.get_category,
                 ),
                 MessageHandler(
-                    Filters.regex("^{}$".format(const.SPEND_30D)),
-                    land_to_task_menu(log_expense.reply_30d_spend),
+                    Filters.regex("^{}$".format(const.SPEND_MONTH)),
+                    land_to_task_menu(log_expense.reply_month_spend),
+                ),
+                MessageHandler(
+                    Filters.regex("^{}$".format(const.LAST_TXNS)),
+                    functools.partial(
+                        log_expense.get_category, mode="show_tx"
+                    ),
                 ),
                 MessageHandler(Filters.regex("^{}$".format(const.EXIT_STR)), cancel),
                 MessageHandler(~Filters.command, confused),
@@ -174,6 +183,9 @@ def main():
                     Filters.text, land_to_task_menu(log_expense.upload_expense)
                 )
             ],
+            const.GET_TXNS: [
+                MessageHandler(Filters.text, land_to_task_menu(log_expense.reply_txns))
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
@@ -187,6 +199,7 @@ def main():
     # need to handle network errors here
     while True:
         try:
+            logger.info("Polling...")
             updater.start_polling()
             updater.idle()
             break
@@ -200,4 +213,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    start_bot()

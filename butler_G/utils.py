@@ -1,13 +1,8 @@
 """Utility Functions"""
-import os
 import time
 
-import psycopg2
-import psycopg2.extensions as ppg_ext
 from telegram import ChatAction
 from telegram.ext.dispatcher import run_async
-
-import credentials as creds
 
 
 def add_doc(value):
@@ -72,33 +67,12 @@ def send_typing(update, context, sleep=0):
 
 
 # DB utils
-def start_db_proxy():
-    """Start database proxy"""
-    with open("start_db_proxy.bat", "w") as f:
-        f.write(
-            'call "{}" -instances={}=tcp:{} -credential_file "{}"'.format(
-                creds.DB_PROXY_EXE,
-                creds.DB_CONN_NAME,
-                creds.DB_PORT,
-                creds.GCP_CREDS_FILE,
-            )
-        )
-    os.system("start /B start cmd.exe @cmd /k start_db_proxy.bat")
-
-
 @run_async
 def execute_query(conn, query, query_data=None, commit=False, fetch=False):
-    """Execute query"""
+    """Execute query.
 
-    if not conn.closed:
-        status = conn.get_transaction_status()
-        if status == ppg_ext.TRANSACTION_STATUS_UNKNOWN:
-            # server connection lost
-            conn.reset()
-        elif status != ppg_ext.TRANSACTION_STATUS_IDLE:
-            # connection in error or in transaction
-            conn.rollback()
-            conn.reset()
+    `fetch` and `commit` are assumed to be False by default.
+    """
 
     cursor = conn.cursor()
     cursor.execute(query, query_data)
@@ -108,30 +82,3 @@ def execute_query(conn, query, query_data=None, commit=False, fetch=False):
         conn.commit()
 
     return data
-
-
-def add_cursor_w_reset(conn):
-    """Adds `cursor_w_reset` method to `psycopg2` `connection` object"""
-
-    @add_doc(
-        (
-            "Similar to cursor, but checks first if connection is alive\n\n"
-            "Docstring of `psycopg2` `cursor` for reference:\n\n{}"
-        ).format(conn.cursor.__doc__)
-    )
-    def cursor_w_reset(self, *args, **kwargs):
-        if not self.closed:
-            status = self.get_transaction_status()
-            if status == ppg_ext.TRANSACTION_STATUS_UNKNOWN:
-                # server connection lost
-                self.reset()
-            elif status != ppg_ext.TRANSACTION_STATUS_IDLE:
-                # connection in error or in transaction
-                self.rollback()
-                self.reset()
-
-        return self.cursor(*args, **kwargs)
-
-    setattr(conn, "cursor_w_reset", cursor_w_reset)
-    return conn
-
