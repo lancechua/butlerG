@@ -11,9 +11,9 @@ import psycopg2
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import ConversationHandler
 
-import credentials as creds
-import constants as const
-import utils
+from . import credentials as creds
+from . import constants as const
+from . import utils
 
 
 _CONN = psycopg2.connect(**creds.DB_CREDS)
@@ -217,9 +217,7 @@ def reply_txns(update, context):
     data = fetch_txns(cat)
     txn_str = "\n".join([row_base_str.format(*row) for row in data])
     update.message.reply_text(
-        ("Recent transactions for {}\n\n{}").format(
-            update.message.text, txn_str
-        )
+        ("Recent transactions for {}\n\n{}").format(update.message.text, txn_str)
     )
     return ConversationHandler.END
 
@@ -243,7 +241,7 @@ def fetch_spend_data():
 
 def fetch_txns(cat=None, n_txn=8):
     """Fetch transactions data"""
-    # TODO (lance.chua): refactor to accommodate sorting by amount, in addition to recency?
+    # TODO: refactor to accommodate sorting by amount, in addition to recency?
     query = """
     SELECT tx_timestamp, amount, {cat}notes
     FROM spend_log

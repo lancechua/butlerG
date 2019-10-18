@@ -12,11 +12,11 @@ from telegram.ext import (
 )
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
-import credentials as creds
-import constants as const
-import utils
+from . import credentials as creds
+from . import constants as const
+from . import utils
 
-import log_expense
+from . import log_expense
 
 # Enable logging
 logging.basicConfig(
@@ -160,9 +160,7 @@ def start_bot():
                 ),
                 MessageHandler(
                     Filters.regex("^{}$".format(const.LAST_TXNS)),
-                    functools.partial(
-                        log_expense.get_category, mode="show_tx"
-                    ),
+                    functools.partial(log_expense.get_category, mode="show_tx"),
                 ),
                 MessageHandler(Filters.regex("^{}$".format(const.EXIT_STR)), cancel),
                 MessageHandler(~Filters.command, confused),
@@ -211,6 +209,3 @@ def start_bot():
             updater.start_polling()
             updater.idle()
 
-
-if __name__ == "__main__":
-    start_bot()
