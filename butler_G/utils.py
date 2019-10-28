@@ -1,6 +1,8 @@
 """Utility Functions"""
+import logging
 import time
 
+import psycopg2
 from telegram import ChatAction
 from telegram.ext.dispatcher import run_async
 
@@ -82,3 +84,102 @@ def execute_query(conn, query, query_data=None, commit=False, fetch=False):
         conn.commit()
 
     return data
+
+
+class ConnWithRecon(object):
+    def __init__(self, *args, **kwargs):
+        """Postgres Connection with Reconnect using psycopg2
+
+        Parameters
+        ----------
+        *args, **kwargs
+            arguments passed to psycopg2.connect
+
+        Notes
+        -----
+        Catch Errors using `psycopg2.OperationalError`
+        """
+        self.conn = psycopg2.connect(*args, **kwargs)
+        self.init_args = args
+        self.init_kwargs = kwargs
+
+    def __getattr__(self, attr):
+        logger = logging.getLogger()
+        if self.conn.closed:
+            self.reconnect()
+        else:
+            status = self.conn.get_transaction_status()
+            if status == psycopg2._ext.TRANSACTION_STATUS_UNKNOWN:
+                logger.info("connection tx status unknown. Restarting...")
+                # server connection lost
+                self.conn.close()
+                self.reconnect()
+
+            elif status != psycopg2._ext.TRANSACTION_STATUS_IDLE:
+                # connection in error or in transaction
+                logger.info("connection in error or in transaction. Rolling back...")
+                self.conn.rollback()
+
+        return getattr(self.conn, attr)
+
+    def reconnect(self):
+        """Reconnect using initialization parameters"""
+        self.conn = psycopg2.connect(*self.init_args, **self.init_kwargs)
+
+
+def setup_tables(conn, expense_budgets=None):
+    """Create and setup tables required in SQL database
+
+    Parameters
+    ----------
+    conn
+    expense_budgets: dict, optional
+        structure:
+        ```python
+        expense_budgets = {
+            "category_1": {
+                "max_budget" : None or float,
+                "tx_amount" : None or float
+            },
+            ...
+        }
+        ```
+        default=`None`
+
+    Notes
+    -----
+    This function is provided primarily as a reference
+    """
+    expense_budgets = expense_budgets or {}
+
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE spend_log(
+            username text NOT NULL,
+            category text NOT NULL,
+            amount real NOT NULL,
+            notes text,
+            tx_timestamp TIMESTAMP NOT NULL
+        );
+        """
+    )
+    conn.commit()
+
+    cur.execute(
+        """
+    CREATE TABLE monthly_budgets(
+        category text,
+        max_budget real,
+        max_tx_amount real
+    );
+    """
+    )
+    for cat, val_dict in expense_budgets.items():
+        cur.execute(
+            "INSERT INTO monthly_budgets (category, max_budget, max_tx_amount) "
+            "VALUES (%(category)s, %(max_budget)s, %(tx_amount)s);",
+            {**{"category": cat, "max_budget": None, "tx_amount": None}, **val_dict},
+        )
+
+    conn.commit()
