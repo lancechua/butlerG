@@ -122,6 +122,10 @@ class ConnWithRecon(object):
 
         return getattr(self.conn, attr)
 
+    def commit(self):
+        """commit, since it doesn't seem to work with __getattr__"""
+        return self.conn.commit()
+
     def reconnect(self):
         """Reconnect using initialization parameters"""
         self.conn = psycopg2.connect(*self.init_args, **self.init_kwargs)
@@ -182,4 +186,34 @@ def setup_tables(conn, expense_budgets=None):
             {**{"category": cat, "max_budget": None, "tx_amount": None}, **val_dict},
         )
 
+    conn.commit()
+
+
+def update_budget(conn, category: str, **kwargs):
+    """Update budget tables
+
+    Parameters
+    ----------
+    conn
+    category : str
+    **kwargs
+        Optional keyword arguments, specify if values need to be updated
+        * max_budget : float
+        * max_tx_amount : float
+    """
+    assert set(kwargs.keys()) <= {"max_budget", "max_tx_amount"}
+    exec_kwargs = {**{"category": category}, **kwargs}
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE monthly_budgets
+        SET {}
+        WHERE category LIKE %(category)s;
+        """.format(
+            ",".join(["{0} = %({0})s".format(col) for col in kwargs.keys()])
+        ),
+        vars=exec_kwargs,
+    )
     conn.commit()
