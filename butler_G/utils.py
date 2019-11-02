@@ -87,9 +87,10 @@ def execute_query(conn, query, query_data=None, commit=False, fetch=False):
 
 
 class ConnWithRecon(object):
-    def __init__(self, *args, **kwargs):
-        """Postgres Connection with Reconnect using psycopg2
+    """Postgres Connection with Reconnect using psycopg2"""
 
+    def __init__(self, *args, **kwargs):
+        """
         Parameters
         ----------
         *args, **kwargs
@@ -212,7 +213,7 @@ def update_budget(conn, category: str, **kwargs):
         SET {}
         WHERE category LIKE %(category)s;
         """.format(
-            ",".join(["{0} = %({0})s".format(col) for col in kwargs.keys()])
+            ",".join(["{0} = %({0})s".format(col) for col in kwargs])
         ),
         vars=exec_kwargs,
     )

@@ -16,7 +16,8 @@ from . import constants as const
 from . import utils
 
 
-_CONN = psycopg2.connect(**creds.DB_CREDS)
+_CONN = utils.ConnWithRecon(**creds.DB_CREDS)
+
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
