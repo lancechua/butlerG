@@ -3,6 +3,7 @@ Log Expense Module
 
 Contains various functions and handlers for the "Log Expense" task
 """
+import calendar
 from datetime import datetime
 import logging
 import random
@@ -192,7 +193,9 @@ def reply_month_spend(update, context):
     data = fetch_spend_data()
     spend_str = "\n".join(
         [
-            "    - {}{} : {:,.2f}".format(cat, "*" if amt > budget else " ", amt)
+            "    - {}{} : {:,.2f} ({:.1%})".format(
+                cat, "*" if amt > budget else " ", amt, amt / budget
+            )
             for cat, amt, budget in data
         ]
     )
@@ -203,6 +206,28 @@ def reply_month_spend(update, context):
             "Total: {:,.2f}\n{}"
         ).format(total_spend, spend_str)
     )
+
+    # spend projections
+    now = datetime.now()
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    scaler = days_in_month / now.day
+    projspend_str = "\n".join(
+        [
+            "    - {}{} : {:,.2f} ({:.1%})".format(
+                cat,
+                "*" if (amt * scaler) > budget else " ",
+                (amt * scaler),
+                (amt * scaler) / budget,
+            )
+            for cat, amt, budget in data
+        ]
+    )
+    update.message.reply_text(
+        "And here is your PROJECTED spend for the month\n\nTotal: {:,.2f}\n{}".format(
+            total_spend * scaler, projspend_str
+        )
+    )
+
     return ConversationHandler.END
 
 
