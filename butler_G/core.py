@@ -17,6 +17,7 @@ from . import constants as const
 from . import utils
 
 from . import log_expense
+from . import log_gift
 
 # Enable logging
 logging.basicConfig(
@@ -78,7 +79,7 @@ def error(update, context):
     """Log Errors caused by Updates.
 
     Notes
-    =====
+    -----
 
     In the `constants` module:
     * `DEV_CHATID` can be specified to send a message when an error is caught.
@@ -162,6 +163,13 @@ def start_bot():
                     Filters.regex("^{}$".format(const.LAST_TXNS)),
                     functools.partial(log_expense.get_category, mode="show_tx"),
                 ),
+                MessageHandler(
+                    Filters.regex("^{}$".format(const.LOG_GIFT)), log_gift.get_recipient
+                ),
+                MessageHandler(
+                    Filters.regex("^{}$".format(const.GIFT_SPEND)),
+                    land_to_task_menu(log_gift.reply_month_gift_spend),
+                ),
                 MessageHandler(Filters.regex("^{}$".format(const.EXIT_STR)), cancel),
                 MessageHandler(~Filters.command, confused),
             ],
@@ -183,6 +191,19 @@ def start_bot():
             ],
             const.GET_TXNS: [
                 MessageHandler(Filters.text, land_to_task_menu(log_expense.reply_txns))
+            ],
+            # gift logging states
+            const.GIFT_RECIPIENT: [
+                MessageHandler(Filters.text, log_gift.get_recipient)
+            ],
+            const.GIFT_ITEM: [MessageHandler(Filters.text, log_gift.get_item)],
+            const.GIFT_AMOUNT: [MessageHandler(Filters.text, log_gift.get_amount)],
+            const.GIFT_NOTE: [MessageHandler(Filters.text, log_gift.get_note)],
+            const.GIFT_REVIEW: [
+                MessageHandler(Filters.text, log_gift.review_gift_upload)
+            ],
+            const.GIFT_UPLOAD: [
+                MessageHandler(Filters.text, land_to_task_menu(log_gift.upload_gift))
             ],
         },
         fallbacks=[
@@ -208,4 +229,3 @@ def start_bot():
             time.sleep(5)
             updater.start_polling()
             updater.idle()
-

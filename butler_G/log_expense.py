@@ -8,7 +8,6 @@ from datetime import datetime
 import logging
 import random
 
-import psycopg2
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import ConversationHandler
 
@@ -210,21 +209,25 @@ def reply_month_spend(update, context):
     # spend projections
     now = datetime.now()
     days_in_month = calendar.monthrange(now.year, now.month)[1]
-    scaler = days_in_month / now.day
+    scaler = {
+        cat: 1 if cat in const.ONETIME_CATEGORIES else (days_in_month / now.day)
+        for cat in const.EXPENSE_CATEGORIES
+    }
     projspend_str = "\n".join(
         [
             "    - {}{} : {:,.2f} ({:.1%})".format(
                 cat,
-                "*" if (amt * scaler) > budget else " ",
-                (amt * scaler),
-                (amt * scaler) / budget,
+                "*" if (amt * scaler[0]) > budget else " ",
+                (amt * scaler[0]),
+                (amt * scaler[0]) / budget,
             )
             for cat, amt, budget in data
         ]
     )
+    total_spend_p = sum(amt * scaler[cat] for cat, amt, budget in data)
     update.message.reply_text(
         "And here is your PROJECTED spend for the month\n\nTotal: {:,.2f}\n{}".format(
-            total_spend * scaler, projspend_str
+            total_spend_p, projspend_str
         )
     )
 
