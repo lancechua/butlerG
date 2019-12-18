@@ -24,6 +24,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _setup():
+    """Set up `gift_log` table in database"""
+    cursor = _CONN.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE gift_log(
+            username text NOT NULL,
+            recipient text NOT NULL,
+            item text NOT NULL,
+            amount real NOT NULL,
+            notes text,
+            tx_timestamp TIMESTAMP NOT NULL
+        );
+        """
+    )
+    _CONN.commit()
+
+
 def get_recipient(update, context):
     """Handler that asks for Gift Recipient"""
     logger.info("Gift Recipient")
@@ -142,3 +160,14 @@ def fetch_gift_spend_data():
     """
 
     return utils.execute_query(_CONN, query, fetch=True).result()
+
+
+STATES = {
+    const.GIFT_RECIPIENT: get_recipient,
+    const.GIFT_ITEM: get_item,
+    const.GIFT_AMOUNT: get_amount,
+    const.GIFT_NOTE: get_note,
+    const.GIFT_REVIEW: review_gift_upload,
+}
+
+TERM_STATES = {const.GIFT_UPLOAD: upload_gift}

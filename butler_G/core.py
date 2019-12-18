@@ -1,6 +1,8 @@
 """Core Functions for ButlerG"""
 import functools
+import json
 import logging
+import os
 import time
 
 from telegram.ext import (
@@ -19,21 +21,31 @@ from . import utils
 from . import log_expense
 from . import log_gift
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-
 logger = logging.getLogger(__name__)
+
+with open(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), const.STATES_JSON), "r"
+) as f:
+    STATES = json.load(f)
+
+
+def _setup():
+    """Setup Database"""
+    log_expense._setup()
+    log_gift._setup()
 
 
 def start(update, context):
     """Flavor entry point. Summons task menu"""
     user = update.message.from_user
     logger.info("[%s] Start", user.first_name)
-    update.message.reply_text(
-        text="Hello Master {}, what now?\n\n*shrug*".format(user.first_name)
-    )
+    if STATES.get("vacation", False):
+        reply_text = "Hello Master {}! Hope you're having fun!".format(user.first_name)
+    else:
+        reply_text = "Hello Master {}, what now?\n\n*shrug*".format(user.first_name)
+
+    update.message.reply_text(text=reply_text)
+
     return task_menu(update, context)
 
 
@@ -174,37 +186,23 @@ def start_bot():
                 MessageHandler(~Filters.command, confused),
             ],
             # expense logging states
-            const.EXPENSE_CATEGORY: [
-                MessageHandler(Filters.text, log_expense.get_category)
-            ],
-            const.EXPENSE_AMOUNT: [
-                MessageHandler(Filters.text, log_expense.get_amount)
-            ],
-            const.EXPENSE_NOTES: [MessageHandler(Filters.text, log_expense.get_notes)],
-            const.REVIEW_EXPENSE_UPLOAD: [
-                MessageHandler(Filters.text, log_expense.review_expense_upload)
-            ],
-            const.UPLOAD_EXPENSE: [
-                MessageHandler(
-                    Filters.text, land_to_task_menu(log_expense.upload_expense)
-                )
-            ],
-            const.GET_TXNS: [
-                MessageHandler(Filters.text, land_to_task_menu(log_expense.reply_txns))
-            ],
+            **{
+                state: [MessageHandler(Filters.text, handler_fx)]
+                for state, handler_fx in log_expense.STATES.items()
+            },
+            **{
+                state: [MessageHandler(Filters.text, land_to_task_menu(handler_fx))]
+                for state, handler_fx in log_expense.TERM_STATES.items()
+            },
             # gift logging states
-            const.GIFT_RECIPIENT: [
-                MessageHandler(Filters.text, log_gift.get_recipient)
-            ],
-            const.GIFT_ITEM: [MessageHandler(Filters.text, log_gift.get_item)],
-            const.GIFT_AMOUNT: [MessageHandler(Filters.text, log_gift.get_amount)],
-            const.GIFT_NOTE: [MessageHandler(Filters.text, log_gift.get_note)],
-            const.GIFT_REVIEW: [
-                MessageHandler(Filters.text, log_gift.review_gift_upload)
-            ],
-            const.GIFT_UPLOAD: [
-                MessageHandler(Filters.text, land_to_task_menu(log_gift.upload_gift))
-            ],
+            **{
+                state: [MessageHandler(Filters.text, handler_fx)]
+                for state, handler_fx in log_gift.STATES.items()
+            },
+            **{
+                state: [MessageHandler(Filters.text, land_to_task_menu(handler_fx))]
+                for state, handler_fx in log_gift.TERM_STATES.items()
+            },
         },
         fallbacks=[
             CommandHandler("cancel", cancel),

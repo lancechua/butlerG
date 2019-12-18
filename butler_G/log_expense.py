@@ -26,6 +26,68 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _setup():
+    """Set up `spend_log` and `monthly_budgets` table in database"""
+    cursor = _CONN.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE spend_log(
+            username text NOT NULL,
+            category text NOT NULL,
+            amount real NOT NULL,
+            notes text,
+            tx_timestamp TIMESTAMP NOT NULL
+        );
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE monthly_budgets(
+            category text,
+            max_budget real,
+            max_tx_amount real
+        );
+        """
+    )
+    _CONN.commit()
+
+
+def _update_budgets(**EXPENSE_BUDGETS):
+    """Clears and Updates `monthly_budgets` table
+
+    Parameters
+    ----------
+    category: dict
+        * value should be as follows:
+        ```{
+            "max_budget": float,
+            "tx_amount": float
+        }```
+        * categories without budget can be ommitted
+
+    Notes
+    -----
+    * Accepts only keyword arguments
+    * Each keyword represents a category
+    """
+    cursor = _CONN.cursor()
+    for cat, val_dict in EXPENSE_BUDGETS.items():
+        logging.info({**{"category": cat}, **val_dict})
+
+        cursor.execute(
+            """
+            UPDATE monthly_budgets
+            SET {}
+            WHERE category LIKE %(category)s;
+            """.format(
+                ",".join(["{0} = %({0})s".format(col) for col in val_dict])
+            ),
+            vars={**{"category": cat}, **val_dict},
+        )
+
+    _CONN.commit()
+
+
 def get_category(update, context, mode="log"):
     """Handler that asks for Expense Category"""
     logger.info("Expense Category")
@@ -217,9 +279,9 @@ def reply_month_spend(update, context):
         [
             "    - {}{} : {:,.2f} ({:.1%})".format(
                 cat,
-                "*" if (amt * scaler[0]) > budget else " ",
-                (amt * scaler[0]),
-                (amt * scaler[0]) / budget,
+                "*" if (amt * scaler[cat]) > budget else " ",
+                (amt * scaler[cat]),
+                (amt * scaler[cat]) / budget,
             )
             for cat, amt, budget in data
         ]
@@ -284,3 +346,13 @@ def fetch_txns(cat=None, n_txn=8):
     )
 
     return utils.execute_query(_CONN, query, fetch=True).result()
+
+
+STATES = {
+    const.EXPENSE_CATEGORY: get_category,
+    const.EXPENSE_AMOUNT: get_amount,
+    const.EXPENSE_NOTES: get_notes,
+    const.REVIEW_EXPENSE_UPLOAD: review_expense_upload,
+}
+
+TERM_STATES = {const.UPLOAD_EXPENSE: upload_expense, const.GET_TXNS: reply_txns}

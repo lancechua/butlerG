@@ -3,6 +3,8 @@
 Note: NOTHING should be imported here
 """
 
+DEV_MODE = False
+
 WARN_THRESH = 0.8
 
 # Responses
@@ -66,3 +68,6 @@ LINES_SHAME = (
 )
 
 LINES_ENTHUSIASM = ("Ooooooh, goodie!", "What sparks of joy!", "Well, isn't that nice.")
+
+# Other
+STATES_JSON = "states.json"

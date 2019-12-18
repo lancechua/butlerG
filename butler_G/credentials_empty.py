@@ -1,11 +1,14 @@
 """Credentials
+Modify credentials based on `constants.DEV_MODE`
 
 NOTE: This is an EMPTY credentials file.
 Please input your own credentials and rename as "credentials.py"
 """
 
-TELEGRAM_API_TOKEN = "YOUR_API_TOKEN"
+from .constants import DEV_MODE
 
+
+TELEGRAM_API_TOKEN = "YOUR_API_TOKEN"
 
 # DATABASE INFO
 
