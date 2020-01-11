@@ -61,7 +61,7 @@ def _update_budgets(**EXPENSE_BUDGETS):
         * value should be as follows:
         ```{
             "max_budget": float,
-            "tx_amount": float
+            "max_tx_amount": float
         }```
         * categories without budget can be ommitted
 
@@ -88,9 +88,20 @@ def _update_budgets(**EXPENSE_BUDGETS):
     _CONN.commit()
 
 
-def get_category(update, context, mode="log"):
+def get_category_log(update, context):
+    """Handler to get Expense Category for Log Expense"""
+    logger.info("Expense Category - Log Expense")
+    return _get_category(update, context, mode="log")
+
+
+def get_category_showtx(update, context):
+    """Handler to get Expense Category for Show Transactions"""
+    logger.info("Expense Category - Show TX")
+    return _get_category(update, context, mode="show_tx")
+
+
+def _get_category(update, context, mode="log"):
     """Handler that asks for Expense Category"""
-    logger.info("Expense Category")
     if mode == "log":
         cats = const.EXPENSE_CATEGORIES
         question = "What did you spend on now?"
@@ -113,8 +124,11 @@ def get_category(update, context, mode="log"):
     return ret_val
 
 
+@utils.validator(
+    valid_values=const.EXPENSE_CATEGORIES, prev_handler=get_category_log
+)
 def get_amount(update, context):
-    """Handler that asks for Expense Amount"""
+    """Handler that asks for Expense Amount with budget warning"""
     logger.info("Expense Amount")
     utils.send_typing(update, context).result()
 
@@ -157,6 +171,12 @@ def get_amount(update, context):
             ).format(cat_spd / cat_budget, cat, cat_spd, cat_budget)
         )
 
+    return _get_amount(update, context)
+
+
+
+def _get_amount(update, context):
+    """Basic get amount handler"""
     update.message.reply_text("How much did you spend?")
     return const.EXPENSE_NOTES
 
@@ -166,7 +186,11 @@ def get_notes(update, context):
     logger.info("Expense Notes")
     context.user_data["amount"] = update.message.text
 
-    amt = float(context.user_data["amount"])
+    try:
+        amt = float(context.user_data["amount"])
+    except ValueError:
+        update.message.reply_text('Does "{}" seem like a number to you?'.format(update.message.text))
+        return _get_amount(update, context)
 
     if amt > context.user_data["_category_tx"]:
         update.message.reply_text(random.choice(const.LINES_SHAME))
@@ -214,7 +238,10 @@ def review_expense_upload(update, context):
 
     return const.UPLOAD_EXPENSE
 
-
+@utils.validator(
+    valid_values={const.YES, const.NO},
+    prev_handler=review_expense_upload,
+)
 def upload_expense(update, context):
     """Handler that submits data for upload"""
     logger.info("Upload Expense")
@@ -243,9 +270,9 @@ def upload_expense(update, context):
 
     else:
         update.message.reply_text(
-            "Well of course there's something wrong... Let's try again shall we?"
+            "Well of course there's something wrong... Let's try again shall we?\nYou may /cancel otherwise."
         )
-        return get_category(update, context)
+        return get_category_log(update, context)
 
 
 def reply_month_spend(update, context):
@@ -296,6 +323,10 @@ def reply_month_spend(update, context):
     return ConversationHandler.END
 
 
+@utils.validator(
+    valid_values={"ALL"} | set(const.EXPENSE_CATEGORIES),
+    prev_handler=get_category_showtx,
+)
 def reply_txns(update, context):
     """Reply last few transactions"""
     if update.message.text.upper() == "ALL":
@@ -349,7 +380,8 @@ def fetch_txns(cat=None, n_txn=8):
 
 
 STATES = {
-    const.EXPENSE_CATEGORY: get_category,
+    const.EXPENSE_CATEGORY_LOG: get_category_log,
+    const.EXPENSE_CATEGORY_SHOWTX: get_category_showtx,
     const.EXPENSE_AMOUNT: get_amount,
     const.EXPENSE_NOTES: get_notes,
     const.REVIEW_EXPENSE_UPLOAD: review_expense_upload,

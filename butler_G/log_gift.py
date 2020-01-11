@@ -62,12 +62,12 @@ def get_item(update, context):
     return const.GIFT_AMOUNT
 
 
-def get_amount(update, context):
+def get_amount(update, context, first_time=True):
     """Handler that asks for Gift Item"""
     logger.info("Gift Amount")
 
     context.user_data["item"] = update.message.text
-    update.message.reply_text("And for how much?")
+    update.message.reply_text("And for how much?" if first_time else "Again... for how much?")
 
     return const.GIFT_NOTE
 
@@ -76,7 +76,12 @@ def get_note(update, context):
     """Handler that asks for Gift Note"""
     logger.info("Gift Note")
 
-    context.user_data["amount"] = update.message.text
+    try:
+        context.user_data["amount"] = float(update.message.text)
+    except ValueError:
+        update.message.reply_text('"{}" doesn\'t quite seem like a number...'.format(update.message.text))
+        return get_amount(update, context, first_time=False)
+
     update.message.reply_text(
         'Do you wish to add any comments?\n(Enter "no comment" otherwise)'
     )
@@ -108,7 +113,10 @@ def review_gift_upload(update, context):
 
     return const.GIFT_UPLOAD
 
-
+@utils.validator(
+    valid_values={const.YES, const.NO},
+    prev_handler=review_gift_upload,
+)
 def upload_gift(update, context):
     """Handler that submits gift data for upload"""
     logger.info("Upload Gift")
@@ -136,7 +144,7 @@ def upload_gift(update, context):
         return ConversationHandler.END
 
     else:
-        update.message.reply_text("Let's try again shall we?")
+        update.message.reply_text("Let's try again shall we?\nOr you can press /cancel...")
         return get_recipient(update, context)
 
 

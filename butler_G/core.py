@@ -158,14 +158,14 @@ def start_bot():
         entry_points=[
             CommandHandler("start", start),
             CommandHandler("menu", task_menu),
-            CommandHandler("log_expense", log_expense.get_category),
+            CommandHandler("log_expense", log_expense.get_category_log),
             MessageHandler(Filters.all, start),
         ],
         states={
             const.TASK: [
                 MessageHandler(
                     Filters.regex("^{}$".format(const.LOG_EXPENSE)),
-                    log_expense.get_category,
+                    log_expense.get_category_log,
                 ),
                 MessageHandler(
                     Filters.regex("^{}$".format(const.SPEND_MONTH)),
@@ -173,7 +173,7 @@ def start_bot():
                 ),
                 MessageHandler(
                     Filters.regex("^{}$".format(const.LAST_TXNS)),
-                    functools.partial(log_expense.get_category, mode="show_tx"),
+                    log_expense.get_category_showtx,
                 ),
                 MessageHandler(
                     Filters.regex("^{}$".format(const.LOG_GIFT)), log_gift.get_recipient

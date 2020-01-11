@@ -1,4 +1,5 @@
 """Utility Functions"""
+import functools
 import logging
 import time
 
@@ -15,6 +16,50 @@ def add_doc(value):
         return func
 
     return _doc
+
+
+def validator(valid_values, prev_handler):
+    """Decorator to validate user reply for handlers
+
+    Parameters
+    ----------
+    val_dict: callable or collection
+        if callable, should return True if value is valid
+        collection of valid responses (ideally a set)
+    prev_handler: callable
+        entry handler representing the "Question" state
+
+    Returns
+    ----------
+    state
+        if reply is valid, func return value, otherwise func's entry state
+
+    Notes
+    ----------
+    Decorate at function handling the reponse
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(update, context, *args, **kwargs):
+            check_pass = (
+                valid_values(update.message.text)
+                if callable(valid_values)
+                else (update.message.text in valid_values)
+            )
+            if check_pass:
+                return func(update, context, *args, **kwargs)
+            else:
+                update.message.reply_text(
+                    'Does "{}" seem to answer my question?\nLet me ask again...'.format(
+                        update.message.text
+                    )
+                )
+                return prev_handler(update, context, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 # Telegram utils
@@ -116,9 +161,9 @@ class ConnWithRecon(object):
                 self.conn.close()
                 self.reconnect()
 
-            elif status != psycopg2._ext.TRANSACTION_STATUS_IDLE:
-                # connection in error or in transaction
-                logger.info("connection in error or in transaction. Rolling back...")
+            elif status >= psycopg2._ext.TRANSACTION_STATUS_INTRANS:
+                # connection in error
+                logger.info("connection in error. Rolling back...")
                 self.conn.rollback()
 
         return getattr(self.conn, attr)
