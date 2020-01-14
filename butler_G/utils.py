@@ -116,9 +116,28 @@ def send_typing(update, context, sleep=0):
 # DB utils
 @run_async
 def execute_query(conn, query, query_data=None, commit=False, fetch=False):
-    """Execute query.
+    """Execute SQL query
 
-    `fetch` and `commit` are assumed to be False by default.
+    Parameters
+    ----------
+    conn
+    query: str
+        passed as first argument to `cursor.execute()`
+    query_data
+        passed as second argument to `cursor.execute()`; defaults to None
+    commit: bool
+        flag whether to run `conn.commit()`; defaults to `False`
+    fetch: bool
+        flag whether to run `cursor.fetchall()`; defaults to `False`
+
+    Returns
+    ----------
+    query result if `fetch` is True
+
+    Notes
+    ----------
+    Meant to be used when the bot is running as it is decorated with `@run_async`
+    Would NOT recommend for functions ran "outside" the bot (e.g. database setup functions)
     """
 
     cursor = conn.cursor()

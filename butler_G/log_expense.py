@@ -28,28 +28,28 @@ logger = logging.getLogger(__name__)
 
 def _setup():
     """Set up `spend_log` and `monthly_budgets` table in database"""
-    cursor = _CONN.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE spend_log(
-            username text NOT NULL,
-            category text NOT NULL,
-            amount real NOT NULL,
-            notes text,
-            tx_timestamp TIMESTAMP NOT NULL
-        );
-        """
-    )
-    cursor.execute(
-        """
-        CREATE TABLE monthly_budgets(
-            category text,
-            max_budget real,
-            max_tx_amount real
-        );
-        """
-    )
-    _CONN.commit()
+    with _CONN.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE spend_log(
+                username text NOT NULL,
+                category text NOT NULL,
+                amount real NOT NULL,
+                notes text,
+                tx_timestamp TIMESTAMP NOT NULL
+            );
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE monthly_budgets(
+                category text,
+                max_budget real,
+                max_tx_amount real
+            );
+            """
+        )
+        _CONN.commit()
 
 
 def _update_budgets(**EXPENSE_BUDGETS):

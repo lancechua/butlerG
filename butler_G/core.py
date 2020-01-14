@@ -20,6 +20,7 @@ from . import utils
 
 from . import log_expense
 from . import log_gift
+from . import account_management as am
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,10 @@ def _setup():
     """Setup Database"""
     log_expense._setup()
     log_gift._setup()
+    am._setup()
 
 
+@am.check_sender()
 def start(update, context):
     """Flavor entry point. Summons task menu"""
     user = update.message.from_user
@@ -48,7 +51,7 @@ def start(update, context):
 
     return task_menu(update, context)
 
-
+@am.check_sender()
 def task_menu(update, context):
     """Services menu"""
     user = update.message.from_user
@@ -64,7 +67,7 @@ def task_menu(update, context):
     )
     return const.TASK
 
-
+@am.check_sender()
 def confused(update, context):
     """Conversation fallback"""
     user = update.message.from_user
@@ -158,7 +161,6 @@ def start_bot():
         entry_points=[
             CommandHandler("start", start),
             CommandHandler("menu", task_menu),
-            CommandHandler("log_expense", log_expense.get_category_log),
             MessageHandler(Filters.all, start),
         ],
         states={
