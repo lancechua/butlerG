@@ -8,25 +8,25 @@ import logging
 
 from telegram.ext import ConversationHandler
 
+from . import constants as const
 from . import credentials as creds
 from . import utils
+from . import db
 
-
-_CONN = utils.ConnWithRecon(**creds.DB_CREDS)
+DB_CLIENT = db.Client(const.DBSVC_URL)
 
 
 def _setup():
     """Set up `users` table in database"""
-    with _CONN.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE users(
-                id integer NOT NULL,
-                gender text NOT NULL
-            );
-            """
-        )
-        _CONN.commit()
+    DB_CLIENT.send_query(
+        """
+        CREATE TABLE users(
+            id integer NOT NULL,
+            gender text NOT NULL
+        );
+        """,
+        commit=True,
+    )
 
 
 def register(update, context):
@@ -36,17 +36,15 @@ def register(update, context):
 
 def validate_id(id: int):
     """Check if id exists in `users` table"""
-    with _CONN.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT COUNT(id) > 0 FROM users
-            WHERE id = %(id)s
-            LIMIT 1;
-            """,
-            locals(),
-        )
-        res = cursor.fetchall()
-        return res[0][0]
+    return DB_CLIENT.send_query(
+        """
+        SELECT COUNT(id) > 0 FROM users
+        WHERE id = %(id)s
+        LIMIT 1;
+        """,
+        query_data=locals(),
+        fetch=True,
+    )[0][0]
 
 
 def _validate_code(update, context):
@@ -56,18 +54,18 @@ def _validate_code(update, context):
 
 def _add_user(id: int, gender: str):
     """Add user to `users` table"""
-    with _CONN.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO users (id, gender) " "VALUES (%(id)s, %(gender)s)", locals()
-        )
-        _CONN.commit()
+    DB_CLIENT.send_query(
+        "INSERT INTO users (id, gender) " "VALUES (%(id)s, %(gender)s)",
+        query_data=locals(),
+        commit=True,
+    )
 
 
 def _remove_user(id: int):
     """Remove user from `users` table"""
-    with _CONN.cursor() as cursor:
-        cursor.execute("DELETE FROM users WHERE id = %(id)s", locals())
-        _CONN.commit()
+    DB_CLIENT.send_query(
+        "DELETE FROM users WHERE id = %(id)s", query_data=locals(), commit=True
+    )
 
 
 def check_sender(report=True):
@@ -97,4 +95,3 @@ def check_sender(report=True):
         return wrapper
 
     return decorator
-

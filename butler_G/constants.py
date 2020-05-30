@@ -2,10 +2,15 @@
 
 Note: NOTHING should be imported here
 """
+import os
+
 
 DEV_MODE = False
 
 WARN_THRESH = 0.8
+
+# Database Service URL
+DBSVC_URL = "tcp://127.0.0.1:50000" if os.name == "nt" else "ipc://butlerG_dbservice"
 
 # Responses
 YES = "Yes"

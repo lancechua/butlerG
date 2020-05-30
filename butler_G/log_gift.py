@@ -13,9 +13,10 @@ from telegram.ext import ConversationHandler
 from . import credentials as creds
 from . import constants as const
 from . import utils
+from . import db
 
 
-_CONN = utils.ConnWithRecon(**creds.DB_CREDS)
+DB_CLIENT = db.Client(const.DBSVC_URL)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -26,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 def _setup():
     """Set up `gift_log` table in database"""
-    cursor = _CONN.cursor()
-    cursor.execute(
+    DB_CLIENT.send_query(
         """
         CREATE TABLE gift_log(
             username text NOT NULL,
@@ -37,9 +37,9 @@ def _setup():
             notes text,
             tx_timestamp TIMESTAMP NOT NULL
         );
-        """
+        """,
+        commit=True,
     )
-    _CONN.commit()
 
 
 def get_recipient(update, context):
@@ -67,7 +67,9 @@ def get_amount(update, context, first_time=True):
     logger.info("Gift Amount")
 
     context.user_data["item"] = update.message.text
-    update.message.reply_text("And for how much?" if first_time else "Again... for how much?")
+    update.message.reply_text(
+        "And for how much?" if first_time else "Again... for how much?"
+    )
 
     return const.GIFT_NOTE
 
@@ -79,7 +81,9 @@ def get_note(update, context):
     try:
         context.user_data["amount"] = float(update.message.text)
     except ValueError:
-        update.message.reply_text('"{}" doesn\'t quite seem like a number...'.format(update.message.text))
+        update.message.reply_text(
+            '"{}" doesn\'t quite seem like a number...'.format(update.message.text)
+        )
         return get_amount(update, context, first_time=False)
 
     update.message.reply_text(
@@ -113,10 +117,8 @@ def review_gift_upload(update, context):
 
     return const.GIFT_UPLOAD
 
-@utils.validator(
-    valid_values={const.YES, const.NO},
-    prev_handler=review_gift_upload,
-)
+
+@utils.validator(valid_values={const.YES, const.NO}, prev_handler=review_gift_upload)
 def upload_gift(update, context):
     """Handler that submits gift data for upload"""
     logger.info("Upload Gift")
@@ -128,13 +130,12 @@ def upload_gift(update, context):
 
         # upload data
         utils.send_typing(update, context).result()
-        utils.execute_query(
-            _CONN,
+        DB_CLIENT.send_query(
             "INSERT INTO gift_log (username, recipient, item, amount, notes, tx_timestamp) "
             "VALUES (%(username)s, %(recipient)s, %(item)s, %(amount)s, %(notes)s, %(tx_timestamp)s)",
             query_data=data_upload,
             commit=True,
-        ).result()
+        )
 
         context.user_data.clear()
         update.message.reply_text(
@@ -144,7 +145,9 @@ def upload_gift(update, context):
         return ConversationHandler.END
 
     else:
-        update.message.reply_text("Let's try again shall we?\nOr you can press /cancel...")
+        update.message.reply_text(
+            "Let's try again shall we?\nOr you can press /cancel..."
+        )
         return get_recipient(update, context)
 
 
@@ -166,8 +169,7 @@ def fetch_gift_spend_data():
     FROM gift_log
     WHERE tx_timestamp >= date_trunc('month', localtimestamp)
     """
-
-    return utils.execute_query(_CONN, query, fetch=True).result()
+    return DB_CLIENT.send_query(query, fetch=True)
 
 
 STATES = {

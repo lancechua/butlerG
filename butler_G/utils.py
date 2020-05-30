@@ -23,7 +23,7 @@ def validator(valid_values, prev_handler):
 
     Parameters
     ----------
-    val_dict: callable or collection
+    valid_values: callable or collection
         if callable, should return True if value is valid
         collection of valid responses (ideally a set)
     prev_handler: callable
@@ -67,7 +67,7 @@ def gen_keyboard(items, columns=None, max_char_len=None):
     """Generate keyboard with shape based on columns and character length
 
     Parameters
-    ==========
+    ----------
     items : list
     columns: int , optional
         number of columns for keyboard;
@@ -75,11 +75,11 @@ def gen_keyboard(items, columns=None, max_char_len=None):
     max_char_len : int, optional
 
     Returns
-    =======
-    list of list of str
+    -------
+    list[list[str]]]
 
     Notes
-    =====
+    -----
     Both `columns` and max_char_len` are unspecified, generates keyboard with 1 columns
     Otherwise, the more restrictive of the two parameters is applied to the row
     """
@@ -111,86 +111,3 @@ def send_typing(update, context, sleep=0):
     )
     time.sleep(sleep)
     return res
-
-
-# DB utils
-@run_async
-def execute_query(conn, query, query_data=None, commit=False, fetch=False):
-    """Execute SQL query
-
-    Parameters
-    ----------
-    conn
-    query: str
-        passed as first argument to `cursor.execute()`
-    query_data
-        passed as second argument to `cursor.execute()`; defaults to None
-    commit: bool
-        flag whether to run `conn.commit()`; defaults to `False`
-    fetch: bool
-        flag whether to run `cursor.fetchall()`; defaults to `False`
-
-    Returns
-    ----------
-    query result if `fetch` is True
-
-    Notes
-    ----------
-    Meant to be used when the bot is running as it is decorated with `@run_async`
-    Would NOT recommend for functions ran "outside" the bot (e.g. database setup functions)
-    """
-
-    cursor = conn.cursor()
-    cursor.execute(query, query_data)
-    data = cursor.fetchall() if fetch else None
-    cursor.close()
-    if commit:
-        conn.commit()
-
-    return data
-
-
-class ConnWithRecon(object):
-    """Postgres Connection with Reconnect using psycopg2"""
-
-    def __init__(self, *args, **kwargs):
-        """
-        Parameters
-        ----------
-        *args, **kwargs
-            arguments passed to psycopg2.connect
-
-        Notes
-        -----
-        Catch Errors using `psycopg2.OperationalError`
-        """
-        self.conn = psycopg2.connect(*args, **kwargs)
-        self.init_args = args
-        self.init_kwargs = kwargs
-
-    def __getattr__(self, attr):
-        logger = logging.getLogger()
-        if self.conn.closed:
-            self.reconnect()
-        else:
-            status = self.conn.get_transaction_status()
-            if status == psycopg2._ext.TRANSACTION_STATUS_UNKNOWN:
-                logger.info("connection tx status unknown. Restarting...")
-                # server connection lost
-                self.conn.close()
-                self.reconnect()
-
-            elif status >= psycopg2._ext.TRANSACTION_STATUS_INTRANS:
-                # connection in error
-                logger.info("connection in error. Rolling back...")
-                self.conn.rollback()
-
-        return getattr(self.conn, attr)
-
-    def commit(self):
-        """commit, since it doesn't seem to work with __getattr__"""
-        return self.conn.commit()
-
-    def reconnect(self):
-        """Reconnect using initialization parameters"""
-        self.conn = psycopg2.connect(*self.init_args, **self.init_kwargs)

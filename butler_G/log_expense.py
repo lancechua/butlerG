@@ -14,9 +14,9 @@ from telegram.ext import ConversationHandler
 from . import credentials as creds
 from . import constants as const
 from . import utils
+from . import db
 
-
-_CONN = utils.ConnWithRecon(**creds.DB_CREDS)
+DB_CLIENT = db.Client(const.DBSVC_URL)
 
 
 logging.basicConfig(
@@ -28,28 +28,28 @@ logger = logging.getLogger(__name__)
 
 def _setup():
     """Set up `spend_log` and `monthly_budgets` table in database"""
-    with _CONN.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE spend_log(
-                username text NOT NULL,
-                category text NOT NULL,
-                amount real NOT NULL,
-                notes text,
-                tx_timestamp TIMESTAMP NOT NULL
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE monthly_budgets(
-                category text,
-                max_budget real,
-                max_tx_amount real
-            );
-            """
-        )
-        _CONN.commit()
+    DB_CLIENT.send_query(
+        """
+        CREATE TABLE spend_log(
+            username text NOT NULL,
+            category text NOT NULL,
+            amount real NOT NULL,
+            notes text,
+            tx_timestamp TIMESTAMP NOT NULL
+        );
+        """,
+        commit=True,
+    )
+    DB_CLIENT.send_query(
+        """
+        CREATE TABLE monthly_budgets(
+            category text,
+            max_budget real,
+            max_tx_amount real
+        );
+        """,
+        commit=True,
+    )
 
 
 def _update_budgets(**EXPENSE_BUDGETS):
@@ -70,11 +70,9 @@ def _update_budgets(**EXPENSE_BUDGETS):
     * Accepts only keyword arguments
     * Each keyword represents a category
     """
-    cursor = _CONN.cursor()
     for cat, val_dict in EXPENSE_BUDGETS.items():
         logging.info({**{"category": cat}, **val_dict})
-
-        cursor.execute(
+        DB_CLIENT.send_query(
             """
             UPDATE monthly_budgets
             SET {}
@@ -82,10 +80,9 @@ def _update_budgets(**EXPENSE_BUDGETS):
             """.format(
                 ",".join(["{0} = %({0})s".format(col) for col in val_dict])
             ),
-            vars={**{"category": cat}, **val_dict},
+            query_data={**{"category": cat}, **val_dict},
+            commit=True,
         )
-
-    _CONN.commit()
 
 
 def get_category_log(update, context):
@@ -124,9 +121,7 @@ def _get_category(update, context, mode="log"):
     return ret_val
 
 
-@utils.validator(
-    valid_values=const.EXPENSE_CATEGORIES, prev_handler=get_category_log
-)
+@utils.validator(valid_values=const.EXPENSE_CATEGORIES, prev_handler=get_category_log)
 def get_amount(update, context):
     """Handler that asks for Expense Amount with budget warning"""
     logger.info("Expense Amount")
@@ -134,23 +129,21 @@ def get_amount(update, context):
 
     cat = update.message.text
     cat_spd = (
-        utils.execute_query(
-            _CONN,
+        DB_CLIENT.send_query(
             "SELECT SUM(amount) FROM spend_log "
             "WHERE category=%(category)s "
             "AND tx_timestamp >= date_trunc('month', localtimestamp);",
             query_data={"category": cat},
             fetch=True,
-        ).result()[0][0]
+        )[0][0]
         or 0
     )
     cat_budget, cat_tx = (
-        utils.execute_query(
-            _CONN,
+        DB_CLIENT.send_query(
             "SELECT max_budget, max_tx_amount FROM monthly_budgets WHERE category=%(category)s;",
             query_data={"category": cat},
             fetch=True,
-        ).result()
+        )
         or [[1e9, 1e9]]
     )[0]
     cat_budget = cat_budget or 1e9
@@ -174,7 +167,6 @@ def get_amount(update, context):
     return _get_amount(update, context)
 
 
-
 def _get_amount(update, context):
     """Basic get amount handler"""
     update.message.reply_text("How much did you spend?")
@@ -189,7 +181,9 @@ def get_notes(update, context):
     try:
         amt = float(context.user_data["amount"])
     except ValueError:
-        update.message.reply_text('Does "{}" seem like a number to you?'.format(update.message.text))
+        update.message.reply_text(
+            'Does "{}" seem like a number to you?'.format(update.message.text)
+        )
         return _get_amount(update, context)
 
     if amt > context.user_data["_category_tx"]:
@@ -238,10 +232,8 @@ def review_expense_upload(update, context):
 
     return const.UPLOAD_EXPENSE
 
-@utils.validator(
-    valid_values={const.YES, const.NO},
-    prev_handler=review_expense_upload,
-)
+
+@utils.validator(valid_values={const.YES, const.NO}, prev_handler=review_expense_upload)
 def upload_expense(update, context):
     """Handler that submits data for upload"""
     logger.info("Upload Expense")
@@ -256,13 +248,12 @@ def upload_expense(update, context):
 
         # upload data
         utils.send_typing(update, context).result()
-        utils.execute_query(
-            _CONN,
+        DB_CLIENT.send_query(
             "INSERT INTO spend_log (username, category, amount, notes, tx_timestamp) "
             "VALUES (%(username)s, %(category)s, %(amount)s, %(notes)s, %(tx_timestamp)s)",
             query_data=data_upload,
             commit=True,
-        ).result()
+        )
 
         context.user_data.clear()
 
@@ -358,7 +349,7 @@ def fetch_spend_data():
     LEFT JOIN monthly_budgets ON month_spd.category = monthly_budgets.category;
     """
 
-    return utils.execute_query(_CONN, query, fetch=True).result()
+    return DB_CLIENT.send_query(query, fetch=True)
 
 
 def fetch_txns(cat=None, n_txn=8):
@@ -376,7 +367,7 @@ def fetch_txns(cat=None, n_txn=8):
         n_txn=n_txn,
     )
 
-    return utils.execute_query(_CONN, query, fetch=True).result()
+    return DB_CLIENT.send_query(query, fetch=True)
 
 
 STATES = {

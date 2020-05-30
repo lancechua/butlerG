@@ -2,6 +2,7 @@
 import functools
 import json
 import logging
+import multiprocessing as mp
 import os
 import time
 
@@ -16,11 +17,13 @@ from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from . import credentials as creds
 from . import constants as const
+from . import db
 from . import utils
 
+# modules with DB interactions
+from . import account_management as am
 from . import log_expense
 from . import log_gift
-from . import account_management as am
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,8 @@ with open(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), const.STATES_JSON), "r"
 ) as f:
     STATES = json.load(f)
+
+_DB_CLIENTS = [log_expense.DB_CLIENT, log_gift.DB_CLIENT, am.DB_CLIENT]
 
 
 def _setup():
@@ -51,6 +56,7 @@ def start(update, context):
 
     return task_menu(update, context)
 
+
 @am.check_sender()
 def task_menu(update, context):
     """Services menu"""
@@ -66,6 +72,7 @@ def task_menu(update, context):
         reply_markup=reply_markup,
     )
     return const.TASK
+
 
 @am.check_sender()
 def confused(update, context):
@@ -150,6 +157,11 @@ def land_to_task_menu(func):
     return wrapper
 
 
+def start_db_svc():
+    """Function to start db service"""
+    server = db.Server(const.DBSVC_URL)
+    server.main(**creds.DB_CREDS)
+
 def start_bot():
     """Main Routine"""
     logger.info("Initializing updater and dispatcher")
@@ -215,6 +227,10 @@ def start_bot():
     dispatcher.add_handler(conv_handler)
     dispatcher.add_error_handler(error)
 
+    logger.info("Starting db service")
+    db_proc = mp.Process(target=start_db_svc)
+    db_proc.start()
+
     # need to handle network errors here
     while True:
         try:
@@ -223,9 +239,21 @@ def start_bot():
             updater.idle()
             break
 
+        except (KeyboardInterrupt, SystemExit):
+            logging.info("Stopping")
+            break
+
         except Exception as err:
             logger.error(repr(err))
             updater.stop()
             time.sleep(5)
             updater.start_polling()
             updater.idle()
+
+    # cleanup
+    updater.stop()
+    db_proc.terminate()
+    for dbc in _DB_CLIENTS:
+        dbc.close()
+
+    logging.info("Exited.")
