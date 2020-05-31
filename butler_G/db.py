@@ -10,16 +10,12 @@ import logging
 import psycopg2
 import zmq
 
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.DEBUG
-)
-
 logger = logging.getLogger(__name__)
 
 
 class Server:
     """Single server that interacts with DB"""
+
     def __init__(self, URL):
         """
         Parameters
@@ -37,10 +33,10 @@ class Server:
         *args, **kwargs
             passed to `psycopg2.connect`
         """
-        logger.info("Creating PG connection...")
+        logger.info("[DBSvc] Creating PG connection...")
         conn = psycopg2.connect(*args, **kwargs)
 
-        logger.info("Starting zmq.REP socket...")
+        logger.info("[DBSvc] Starting zmq.REP socket...")
         ctx = zmq.Context.instance()
         server = ctx.socket(zmq.REP)  # pylint: disable=no-member
         server.bind(self.URL)
@@ -48,29 +44,33 @@ class Server:
             try:
                 msg = server.recv_pyobj()
 
-                logging.debug("Request: %s", msg)
-                status = conn.get_transaction_status()
-                if status == psycopg2._ext.TRANSACTION_STATUS_UNKNOWN:
-                    # server connection lost
-                    conn.close()
+                logger.debug("[DBSvc] Request: %s", msg)
+                recon_attempt = 0
+                while True:
+                    try:
+                        with conn.cursor() as cursor:
+                            # execute stuff
+                            cursor.execute(msg["query"], msg["query_data"])
+                            result = cursor.fetchall() if msg["fetch"] else None
+                            if msg["commit"]:
+                                conn.commit()
+                            else:
+                                conn.rollback()
+                        break
+                    except psycopg2.OperationalError as err:
+                        recon_attempt += 1
+                        logger.error(
+                            "[DBSvc] Error caught: %s, Restarting (Attempt #%.0f)",
+                            repr(err),
+                            recon_attempt,
+                        )
+                        conn = psycopg2.connect(*args, **kwargs)
 
-                if conn.closed:
-                    logger.info("Restarting PG connection...")
-                    conn = psycopg2.connect(*args, **kwargs)
-
-                with conn.cursor() as cursor:
-                    # execute stuff
-                    cursor.execute(msg["query"], msg["query_data"])
-                    result = cursor.fetchall() if msg["fetch"] else None
-                    if msg["commit"]:
-                        conn.commit()
-                    else:
-                        conn.rollback()
-
-                logging.debug("Response: %s", result)
+                logger.debug("[DBSvc] Response: %s", result)
                 server.send_pyobj(result)
+
             except (KeyboardInterrupt, SystemExit):
-                logging.info("Stopping...")
+                logger.info("[DBSvc] Stopping...")
                 break
 
         server.close()
@@ -79,6 +79,7 @@ class Server:
 
 class Client:
     """Client to send queries to Server"""
+
     def __init__(self, URL):
         """
         Parameters
@@ -121,8 +122,7 @@ class Client:
             "query": query,
             "query_data": query_data,
             "commit": commit,
-            "fetch": fetch
+            "fetch": fetch,
         }
         self.client.send_pyobj(data)
         return self.client.recv_pyobj()
-
