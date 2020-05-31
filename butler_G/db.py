@@ -75,6 +75,7 @@ class Server:
 
         server.close()
         ctx.term()
+        logger.info("[DBSvc] Exited")
 
 
 class Client:
