@@ -165,7 +165,14 @@ def start_db_svc():
 def start_bot():
     """Main Routine"""
     logger.info("Initializing updater and dispatcher")
-    updater = Updater(token=creds.TELEGRAM_API_TOKEN, use_context=True)
+    updater = Updater(
+        token=creds.TELEGRAM_API_TOKEN,
+        use_context=True,
+        request_kwargs={
+            "read_timeout":60,
+            "connect_timeout":60
+        },
+    )
     dispatcher = updater.dispatcher
 
     logger.info("Initializing conversation handler")
