@@ -208,20 +208,20 @@ def start_bot():
             ],
             # expense logging states
             **{
-                state: [MessageHandler(Filters.text, handler_fx)]
+                state: [MessageHandler(Filters.text & (~Filters.command), handler_fx)]
                 for state, handler_fx in log_expense.STATES.items()
             },
             **{
-                state: [MessageHandler(Filters.text, land_to_task_menu(handler_fx))]
+                state: [MessageHandler(Filters.text & (~Filters.command), land_to_task_menu(handler_fx))]
                 for state, handler_fx in log_expense.TERM_STATES.items()
             },
             # gift logging states
             **{
-                state: [MessageHandler(Filters.text, handler_fx)]
+                state: [MessageHandler(Filters.text & (~Filters.command), handler_fx)]
                 for state, handler_fx in log_gift.STATES.items()
             },
             **{
-                state: [MessageHandler(Filters.text, land_to_task_menu(handler_fx))]
+                state: [MessageHandler(Filters.text & (~Filters.command), land_to_task_menu(handler_fx))]
                 for state, handler_fx in log_gift.TERM_STATES.items()
             },
         },
