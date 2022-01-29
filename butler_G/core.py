@@ -162,16 +162,14 @@ def start_db_svc():
     server = db.Server(const.DBSVC_URL)
     server.main(**creds.DB_CREDS)
 
+
 def start_bot():
     """Main Routine"""
     logger.info("Initializing updater and dispatcher")
     updater = Updater(
         token=creds.TELEGRAM_API_TOKEN,
         use_context=True,
-        request_kwargs={
-            "read_timeout":60,
-            "connect_timeout":60
-        },
+        request_kwargs={"read_timeout": 60, "connect_timeout": 60},
     )
     dispatcher = updater.dispatcher
 
@@ -212,7 +210,11 @@ def start_bot():
                 for state, handler_fx in log_expense.STATES.items()
             },
             **{
-                state: [MessageHandler(Filters.text & (~Filters.command), land_to_task_menu(handler_fx))]
+                state: [
+                    MessageHandler(
+                        Filters.text & (~Filters.command), land_to_task_menu(handler_fx)
+                    )
+                ]
                 for state, handler_fx in log_expense.TERM_STATES.items()
             },
             # gift logging states
@@ -221,7 +223,11 @@ def start_bot():
                 for state, handler_fx in log_gift.STATES.items()
             },
             **{
-                state: [MessageHandler(Filters.text & (~Filters.command), land_to_task_menu(handler_fx))]
+                state: [
+                    MessageHandler(
+                        Filters.text & (~Filters.command), land_to_task_menu(handler_fx)
+                    )
+                ]
                 for state, handler_fx in log_gift.TERM_STATES.items()
             },
         },

@@ -50,6 +50,14 @@ def _setup():
         """,
         commit=True,
     )
+    vals = ",".join([f"('{cat_i}', NULL, NULL)" for cat_i in const.EXPENSE_CATEGORIES])
+    DB_CLIENT.send_query(
+        f"""
+        INSERT INTO monthly_budgets (category, max_budget, max_tx_amount)
+        VALUES {vals};
+        """,
+        commit=True,
+    )
 
 
 def _update_budgets(**EXPENSE_BUDGETS):
